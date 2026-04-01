@@ -435,7 +435,36 @@ df = df.drop("_global_row_num", "_year_row_num", "_base_seq")
 
 # COMMAND ----------
 
-# Ensure all expected lookup/employment columns exist (some may be absent in certain schemas)
+# Ensure all expected source columns exist (some may be absent in certain table schemas)
+expected_src_cols = [
+    "ACCT_CD", "ACTION", "ACTION_DT", "ACTION_REASON", "ANNL_BENEF_BASE_RT",
+    "BARG_UNIT", "COMPANY", "COMPRATE", "DEPTID", "EFFDT", "EFFSEQ",
+    "EMPLID", "EMPL_RCD", "FLSA_STATUS", "GRADE", "GRADE_ENTRY_DT",
+    "GVT_ANN_IND", "GVT_COMPRATE", "GVT_CSRS_FROZN_SVC", "GVT_FEGLI",
+    "GVT_FEGLI_LIVING", "GVT_FERS_COVERAGE", "GVT_HRLY_RT_NO_LOC",
+    "GVT_LEG_AUTH_1", "GVT_LEG_AUTH_2", "GVT_LEO_POSITION", "GVT_LIVING_AMT",
+    "GVT_LOCALITY_ADJ", "GVT_NOA_CODE", "GVT_PAR_AUTH_D1", "GVT_PAR_AUTH_D1_2",
+    "GVT_PAR_AUTH_D2", "GVT_PAR_AUTH_D2_2", "GVT_PAR_NTE_DATE",
+    "GVT_PAY_BASIS", "GVT_PAY_PLAN", "GVT_PAY_RATE_DETER", "GVT_POI",
+    "GVT_POSN_OCCUPIED", "GVT_PREV_RET_COVRG", "GVT_RETIRE_PLAN",
+    "GVT_RTND_GRADE", "GVT_RTND_PAY_PLAN", "GVT_RTND_STEP",
+    "GVT_STATUS_TYPE", "GVT_STEP", "GVT_SUB_AGENCY", "GVT_TYPE_OF_APPT",
+    "GVT_WIP_STATUS", "GVT_WORK_SCHED", "GVT_XFER_FROM_AGCY", "GVT_XFER_TO_AGCY",
+    "HE_AL_BALANCE", "HE_AL_CARRYOVER", "HE_AL_ACCRUAL", "HE_AL_RED_CRED",
+    "HE_AL_TOTAL", "HE_AWOP_SEP", "HE_AWOP_WIGI", "HE_EMP_UDED_AMT",
+    "HE_FROZEN_SL", "HE_GVT_UDED_AMT", "HE_LUMP_HRS", "HE_NOA_EXT",
+    "HE_NO_TSP_PAYPER", "HE_PP_UDED_AMT", "HE_REG_MILITARY", "HE_RES_BALANCE",
+    "HE_RES_LASTYR", "HE_RES_THREEYRS", "HE_RES_TWOYRS",
+    "HE_SL_BALANCE", "HE_SL_CARRYOVER", "HE_SL_ACCRUAL", "HE_SL_RED_CRED",
+    "HE_SL_TOTAL", "HE_SPC_MILITARY", "HE_TLTR_NO", "HE_TSPA_SUB_YR",
+    "HE_TSP_CANC_CD", "HE_UDED_PAY_CD", "HOURLY_RT", "JOBCODE",
+    "LOCATION", "PAYGROUP", "POSITION_ENTRY_DT", "POSITION_NBR",
+    "REG_TEMP", "REPORTS_TO", "SAL_ADMIN_PLAN", "SETID_DEPT",
+    "STD_HOURS", "STEP_ENTRY_DT", "UNION_CD",
+    "GVT_ANNUITY_OFFSET",
+]
+df = ensure_columns(df, expected_src_cols)
+
 expected_emp_cols = [
     "emp_GVT_SCD_RETIRE", "emp_GVT_SCD_TSP", "emp_GVT_SCD_LEO",
     "emp_GVT_RTND_GRADE_BEG", "emp_GVT_RTND_GRADE_EXP",
