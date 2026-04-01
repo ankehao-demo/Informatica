@@ -1087,7 +1087,7 @@ print(f"Primary target row count: {primary_df.count()}")
 # COMMAND ----------
 
 # Write to NWK_ACTION_PRIMARY_TBL
-primary_df.write.format("delta").mode("overwrite").saveAsTable(
+primary_df.write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable(
     f"{DATABASE}.nwk_action_primary_tbl"
 )
 print("Written to nwk_action_primary_tbl")
@@ -1174,7 +1174,7 @@ print(f"Secondary target row count: {secondary_df.count()}")
 # COMMAND ----------
 
 # Write to NWK_ACTION_SECONDARY_TBL
-secondary_df.write.format("delta").mode("overwrite").saveAsTable(
+secondary_df.write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable(
     f"{DATABASE}.nwk_action_secondary_tbl"
 )
 print("Written to nwk_action_secondary_tbl")
@@ -1207,7 +1207,7 @@ print(f"Tracking target row count: {tracking_df.count()}")
 # COMMAND ----------
 
 # Write to EHRP_RECS_TRACKING_TBL
-tracking_df.write.format("delta").mode("overwrite").saveAsTable(
+tracking_df.write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable(
     f"{DATABASE}.ehrp_recs_tracking_tbl"
 )
 print("Written to ehrp_recs_tracking_tbl")
