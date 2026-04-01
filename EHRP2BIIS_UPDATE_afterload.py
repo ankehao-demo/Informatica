@@ -124,7 +124,7 @@ secondary_df = spark.table(f"{DATABASE}.nwk_action_secondary_tbl")
 primary_df = spark.table(f"{DATABASE}.nwk_action_primary_tbl")
 today_event_ids = (
     primary_df.filter(
-        (col("LOAD_DATE") == current_date()) & (col("EVENT_ID") < 9000000000)
+        (col("LOAD_DATE") == current_date()) & (col("EVENT_ID").cast("long") < 9000000000)
     )
     .select("EVENT_ID")
 )
@@ -132,7 +132,7 @@ today_event_ids = (
 # Count affected rows before fix
 affected_count = (
     secondary_df.join(today_event_ids, on="EVENT_ID", how="inner")
-    .filter(col("RETND1_STEP_CD") == "0.0000000000000")
+    .filter(col("RETND1_STEP_CD").cast("string") == "0.0000000000000")
     .count()
 )
 
@@ -146,12 +146,12 @@ if affected_count > 0:
         when(
             (col("EVENT_ID").isin(
                 [row["EVENT_ID"] for row in today_event_ids.collect()]
-            )) & (col("RETND1_STEP_CD") == "0.0000000000000"),
+            )) & (col("RETND1_STEP_CD").cast("string") == "0.0000000000000"),
             lit(None)
         ).otherwise(col("RETND1_STEP_CD"))
     )
 
-    fixed_secondary.write.format("delta").mode("overwrite").saveAsTable(
+    fixed_secondary.write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable(
         f"{DATABASE}.nwk_action_secondary_tbl"
     )
     log_info(f"Step 04 - Fixed {affected_count} retained step code values")
@@ -247,7 +247,7 @@ log_info(f"Step 06 - Records to promote to action_primary_all: {today_primary_co
 if today_primary_count > 0:
     # Check if target table exists; create or append
     try:
-        primary_today.write.format("delta").mode("append").saveAsTable(
+        primary_today.write.format("delta").mode("append").option("mergeSchema", "true").saveAsTable(
             f"{DATABASE}.action_primary_all"
         )
         log_info(f"Step 06 - Promoted {today_primary_count} rows to action_primary_all")
@@ -266,7 +266,7 @@ try:
     )
     sec_promo_count = secondary_today.count()
 
-    secondary_today.write.format("delta").mode("append").saveAsTable(
+    secondary_today.write.format("delta").mode("append").option("mergeSchema", "true").saveAsTable(
         f"{DATABASE}.action_secondary_all"
     )
     log_info(f"Step 06 - Promoted {sec_promo_count} rows to action_secondary_all")
@@ -281,7 +281,7 @@ try:
     )
     rmk_promo_count = remarks_today.count()
 
-    remarks_today.write.format("delta").mode("append").saveAsTable(
+    remarks_today.write.format("delta").mode("append").option("mergeSchema", "true").saveAsTable(
         f"{DATABASE}.action_remarks_all"
     )
     log_info(f"Step 06 - Promoted {rmk_promo_count} rows to action_remarks_all")
@@ -455,7 +455,7 @@ log_info(
 
 # --- Check 8: TSP Vesting Code values are 0, 2, or 3 ---
 invalid_tsp = secondary.filter(
-    ~col("TSP_VESTING_CD").isin(0, 2, 3)
+    ~col("TSP_VESTING_CD").cast("string").isin("0", "2", "3")
     & col("TSP_VESTING_CD").isNotNull()
 ).count()
 
@@ -467,7 +467,7 @@ log_info(
 )
 
 # --- Check 9: EVENT_IDs are positive and within expected range ---
-negative_or_zero = primary.filter(col("EVENT_ID") <= 0).count()
+negative_or_zero = primary.filter(col("EVENT_ID").cast("long") <= 0).count()
 check_9 = negative_or_zero == 0
 validation_results["event_id_positive"] = "PASS" if check_9 else "FAIL"
 log_info(
