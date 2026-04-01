@@ -28,7 +28,7 @@ Technical:
 
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
-from pyspark.sql.types import StringType, DateType
+from pyspark.sql.types import StringType, IntegerType, DateType
 from pyspark.sql.window import Window
 from datetime import datetime
 
@@ -949,6 +949,26 @@ def apply_exp_main2biis(df):
 #   2. NWK_ACTION_PRIMARY_TBL - from exp_MAIN2BIIS + lookups + exp_PERS_DATA
 #   3. NWK_ACTION_SECONDARY_TBL - from exp_MAIN2BIIS + exp_PERS_DATA
 # ============================================================================
+def cast_df_to_target_schema(write_df, target_table, spark):
+    """
+    Read the target Delta table's schema and cast all columns in write_df
+    to match the target types. This prevents DELTA_MERGE_INCOMPATIBLE_DATATYPE
+    errors when source column types (e.g. LongType from Hive) differ from
+    the target table schema (e.g. IntegerType or DoubleType).
+    """
+    try:
+        target_schema = spark.table(target_table).schema
+        target_types = {field.name: field.dataType for field in target_schema}
+        cast_exprs = []
+        for col_name in write_df.columns:
+            if col_name in target_types:
+                cast_exprs.append(F.col(col_name).cast(target_types[col_name]).alias(col_name))
+            else:
+                cast_exprs.append(F.col(col_name))
+        return write_df.select(*cast_exprs)
+    except Exception as e:
+        print(f"  [WARN] Could not read target schema for {target_table}, writing as-is: {e}")
+        return write_df
 def write_ehrp_recs_tracking(df, spark):
     """
     Write to EHRP_RECS_TRACKING_TBL target table.
@@ -964,9 +984,9 @@ def write_ehrp_recs_tracking(df, spark):
 
     tracking_df = df.select(
         F.col("EMPLID").cast(StringType()).alias("EMPLID"),
-        F.col("EMPL_RCD").alias("EMPL_RCD"),
+        F.col("EMPL_RCD").cast(IntegerType()).alias("EMPL_RCD"),
         F.col("EFFDT").alias("EFFDT"),
-        F.col("EFFSEQ").alias("EFFSEQ"),
+        F.col("EFFSEQ").cast(IntegerType()).alias("EFFSEQ"),
         F.col("o_EVENT_SUBMITTED_DTE").alias("EVENT_SUBMITTED_DT"),
         F.col("GVT_WIP_STATUS").alias("GVT_WIP_STATUS"),
         F.col("GVT_NOA_CODE").alias("NOA_CD"),
@@ -979,8 +999,10 @@ def write_ehrp_recs_tracking(df, spark):
     print(f"  Rows to write: {count:,}")
     assert count > 0, "EHRP_RECS_TRACKING_TBL would receive 0 rows"
 
+    tracking_df = cast_df_to_target_schema(tracking_df, f"{DATABASE}.ehrp_recs_tracking_tbl", spark)
     tracking_df.write.format("delta") \
         .mode("append") \
+        .option("mergeSchema", "true") \
         .saveAsTable(f"{DATABASE}.ehrp_recs_tracking_tbl")
 
     print(f"  [OK] {count:,} rows written to {DATABASE}.ehrp_recs_tracking_tbl")
@@ -1103,8 +1125,8 @@ def write_nwk_action_primary(df, spark):
         F.col("o_YEAR_DEGREE").alias("YEAR_DEGREE_ATTAINED_DTE"),
         F.col("o_LOAD_ID").alias("LOAD_ID"),
         F.col("o_LOAD_DATE").alias("LOAD_DATE"),
-        F.col("o_EFFSEQ").alias("EFFSEQ"),
-        F.col("EMPL_RCD").alias("EMPL_REC_NO"),
+        F.col("o_EFFSEQ").cast(IntegerType()).alias("EFFSEQ"),
+        F.col("EMPL_RCD").cast(IntegerType()).alias("EMPL_REC_NO"),
         F.col("ACTION").alias("EHRP_TYPE_ACTION"),
         F.col("ACTION_REASON").alias("EHRP_ACTION_REASON"),
         F.col("GVT_WIP_STATUS").alias("GVT_WIP_STATUS"),
@@ -1184,8 +1206,10 @@ def write_nwk_action_primary(df, spark):
     print(f"  Rows to write: {count:,}")
     assert count > 0, "NWK_ACTION_PRIMARY_TBL would receive 0 rows"
 
+    primary_df = cast_df_to_target_schema(primary_df, f"{DATABASE}.nwk_action_primary_tbl", spark)
     primary_df.write.format("delta") \
         .mode("append") \
+        .option("mergeSchema", "true") \
         .saveAsTable(f"{DATABASE}.nwk_action_primary_tbl")
 
     print(f"  [OK] {count:,} rows written to {DATABASE}.nwk_action_primary_tbl")
@@ -1260,8 +1284,10 @@ def write_nwk_action_secondary(df, spark):
     print(f"  Rows to write: {count:,}")
     assert count > 0, "NWK_ACTION_SECONDARY_TBL would receive 0 rows"
 
+    secondary_df = cast_df_to_target_schema(secondary_df, f"{DATABASE}.nwk_action_secondary_tbl", spark)
     secondary_df.write.format("delta") \
         .mode("append") \
+        .option("mergeSchema", "true") \
         .saveAsTable(f"{DATABASE}.nwk_action_secondary_tbl")
 
     print(f"  [OK] {count:,} rows written to {DATABASE}.nwk_action_secondary_tbl")
@@ -1315,8 +1341,6 @@ def main():
         # STEP 7: exp_MAIN2BIIS (main business logic - all expressions)
         transformed_df = apply_exp_main2biis(enriched_df)
 
-        # Cache the transformed DataFrame since it feeds 3 targets
-        transformed_df.cache()
         total_rows = transformed_df.count()
         print(f"\n[INFO] Total transformed rows: {total_rows:,}")
 
@@ -1333,8 +1357,6 @@ def main():
         counts["nwk_action_primary"] = write_nwk_action_primary(transformed_df, spark)
         counts["nwk_action_secondary"] = write_nwk_action_secondary(transformed_df, spark)
 
-        # Unpersist cached DataFrame
-        transformed_df.unpersist()
 
     except Exception as e:
         print(f"\n[CRITICAL] ETL pipeline failed: {e}")
