@@ -80,8 +80,6 @@ def create_spark_session():
 
 def ensure_database(spark):
     """Create the hhs_migration database if it does not exist."""
-    spark.sql("USE CATALOG hive_metastore")
-    print("[OK] Using catalog 'hive_metastore'.")
     spark.sql(f"CREATE DATABASE IF NOT EXISTS {DATABASE}")
     spark.sql(f"USE {DATABASE}")
     print(f"[OK] Database '{DATABASE}' ready.")
