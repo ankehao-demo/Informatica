@@ -56,6 +56,15 @@ def is_spaces_to_null(col_name):
     ).otherwise(col(col_name))
 
 
+def ensure_columns(dataframe, column_names):
+    """Add missing columns as NULL to handle schema variations across environments."""
+    existing = set(dataframe.columns)
+    for c in column_names:
+        if c not in existing:
+            dataframe = dataframe.withColumn(c, lit(None).cast(StringType()))
+    return dataframe
+
+
 # COMMAND ----------
 
 # MAGIC %md
@@ -425,6 +434,34 @@ df = df.drop("_global_row_num", "_year_row_num", "_base_seq")
 # MAGIC transformations.
 
 # COMMAND ----------
+
+# Ensure all expected lookup/employment columns exist (some may be absent in certain schemas)
+expected_emp_cols = [
+    "emp_GVT_SCD_RETIRE", "emp_GVT_SCD_TSP", "emp_GVT_SCD_LEO",
+    "emp_GVT_RTND_GRADE_BEG", "emp_GVT_RTND_GRADE_EXP",
+    "emp_GVT_SABBATIC_EXPIR", "emp_GVT_CURR_APT_AUTH1", "emp_GVT_CURR_APT_AUTH2",
+    "emp_CMPNY_SENIORITY_DT", "emp_BUSINESS_TITLE", "emp_GVT_APPT_LIMIT_HRS",
+    "emp_PROBATION_DT", "emp_GVT_WGI_DUE_DATE",
+    "emp_HIRE_DT", "emp_SERVICE_DT", "emp_LAST_INCREASE_DT",
+    "emp_GVT_WGI_STATUS", "emp_GVT_TENURE",
+    "emp_GVT_SPEP", "emp_GVT_TEMP_PRO_EXPIR", "emp_GVT_TEMP_PSN_EXPIR",
+    "emp_GVT_DETAIL_EXPIRES", "emp_GVT_APPT_EXPIR_DT",
+    "emp_GVT_SUPV_PROB_DT", "emp_GVT_CNV_BEGIN_DATE",
+    "emp_GVT_COMP_LVL_PERM", "emp_GVT_APPT_LIMIT_DYS",
+]
+expected_lkp_cols = [
+    "lkp_NATIONAL_ID", "lkp_GOAL_AMT", "lkp_OTH_HRS", "lkp_OTH_PAY",
+    "lkp_EARNINGS_END_DT", "lkp_ERNCD", "lkp_GVT_TANG_BEN_AMT",
+    "lkp_GVT_DATE_WRK", "lkp_HE_FILL_POSITION", "lkp_CITIZENSHIP_STATUS",
+    "lkp_LAST_NAME", "lkp_FIRST_NAME", "lkp_MIDDLE_NAME",
+    "lkp_ADDRESS1", "lkp_CITY", "lkp_STATE", "lkp_POSTAL", "lkp_GEO_CODE",
+    "lkp_SEX", "lkp_BIRTHDATE", "lkp_MILITARY_STATUS",
+    "lkp_GVT_CRED_MIL_SVCE", "lkp_GVT_MILITARY_COMP",
+    "lkp_GVT_MIL_RESRVE_CAT", "lkp_GVT_VET_PREF_APPT",
+    "lkp_ETHNIC_GROUP", "lkp_GVT_DISABILITY_CD",
+    "lkp_JPM_INTEGER_2", "lkp_MAJOR_CODE", "lkp_JPM_CAT_ITEM_ID",
+]
+df = ensure_columns(df, expected_emp_cols + expected_lkp_cols)
 
 # --- 6.1 Load ID and Date Generation (Section 7.3.7) ---
 df = df.withColumn("o_LOAD_DATE", current_date())
