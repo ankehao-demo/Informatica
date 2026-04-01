@@ -14,7 +14,7 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
     col, lit, count, when, current_date, current_timestamp,
     trim, min as spark_min, max as spark_max, sum as spark_sum,
-    expr, isnull, length,
+    expr, isnull, length, coalesce,
 )
 from datetime import datetime
 
@@ -216,8 +216,6 @@ if today_max_ids.count() > 0:
             ).otherwise(coalesce(col("e.EHRP_SEQ_NUMBER"), lit(0))).alias("EHRP_SEQ_NUMBER"),
         )
     )
-
-    from pyspark.sql.functions import coalesce
 
     updated_seq.write.format("delta").mode("overwrite").saveAsTable(
         f"{DATABASE}.sequence_num_tbl"
