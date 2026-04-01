@@ -384,32 +384,26 @@ df = df.withColumn("v_CURRENT_YEAR", year(col("EFFDT")))
 
 # COMMAND ----------
 
-from pyspark.sql.functions import udf
 from pyspark.sql.types import LongType
-import json
 
-# Broadcast the sequence map
-seq_map_bc = spark.sparkContext.broadcast(seq_map)
-
-# Add a global row number ordered by EFFDT to maintain Informatica's processing order
-window_global = Window.orderBy("EFFDT", "EMPLID", "EMPL_RCD", "EFFSEQ")
-df = df.withColumn("_global_row_num", row_number().over(window_global))
+# Build a small DataFrame from the sequence map and broadcast-join it
+# (avoids spark.sparkContext.broadcast which is unsupported on serverless)
+seq_rows = [(int(yr), int(seq)) for yr, seq in seq_map.items()]
+seq_df = spark.createDataFrame(seq_rows, ["_seq_year", "_seq_base"])
 
 # Partition by year and assign row numbers within each year
 window_year = Window.partitionBy("v_CURRENT_YEAR").orderBy("EFFDT", "EMPLID", "EMPL_RCD", "EFFSEQ")
 df = df.withColumn("_year_row_num", row_number().over(window_year))
 
-# Create a UDF to compute the base sequence for each year
-@udf(returnType=LongType())
-def get_base_seq(current_year):
-    """Get the base sequence number for a given year from the sequence table."""
-    sm = seq_map_bc.value
-    if current_year in sm:
-        return int(sm[current_year])
-    # If year not in table, default to 0
-    return 0
+# Join the sequence base numbers by year (broadcast the tiny lookup table)
+df = df.join(
+    broadcast(seq_df),
+    on=df["v_CURRENT_YEAR"] == seq_df["_seq_year"],
+    how="left",
+).drop("_seq_year")
 
-df = df.withColumn("_base_seq", get_base_seq(col("v_CURRENT_YEAR")))
+# Default to 0 if year not found in sequence table
+df = df.withColumn("_base_seq", coalesce(col("_seq_base"), lit(0)).cast(LongType())).drop("_seq_base")
 
 # Event ID = base_sequence_number + row_number_within_year
 # This matches Informatica's behavior: resets to EHRP_SEQ_NUMBER+1 on year boundary,
