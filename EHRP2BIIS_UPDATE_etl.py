@@ -135,7 +135,7 @@ def load_lookup_tables(spark):
     print(f"  ps_gvt_employment: {lookups['gvt_employment'].count()} rows")
 
     # --- lkp_PS_GVT_PERS_NID ---
-    # Condition: EMPLID
+    # Condition: EMPLID = EMPLID_IN AND EMPL_RCD = EMPL_RCD_IN AND EFFDT = EFFDT_IN AND EFFSEQ = EFFSEQ_IN
     # Returns: NATIONAL_ID (SSN)
     lookups["gvt_pers_nid"] = spark.table(f"{DATABASE}.ps_gvt_pers_nid")
     print(f"  ps_gvt_pers_nid: {lookups['gvt_pers_nid'].count()} rows")
@@ -162,7 +162,7 @@ def load_lookup_tables(spark):
     print(f"  ps_he_fill_pos: {lookups['he_fill_pos'].count()} rows")
 
     # --- lkp_PS_GVT_CITIZENSHIP ---
-    # Condition: EMPLID
+    # Condition: EMPLID = EMPLID_IN AND EMPL_RCD = EMPL_RCD_IN AND EFFDT = EFFDT_IN AND EFFSEQ = EFFSEQ_IN
     # Returns: CITIZENSHIP_STATUS
     lookups["gvt_citizenship"] = spark.table(f"{DATABASE}.ps_gvt_citizenship")
     print(f"  ps_gvt_citizenship: {lookups['gvt_citizenship'].count()} rows")
@@ -217,7 +217,12 @@ def apply_lookup_joins(sq_df, lookups):
         "GVT_TEMP_PRO_EXPIR", "GVT_SABBATIC_EXPIR",
         "GVT_CURR_APT_AUTH1", "GVT_CURR_APT_AUTH2",
         "GVT_RTND_GRADE_BEG", "GVT_RTND_GRADE_EXP",
-        "TEMP_GVT_EFFDT", "OTH_PAY"
+        "TEMP_GVT_EFFDT", "OTH_PAY",
+        # Additional fields that flow directly to NWK_ACTION_PRIMARY_TBL (Connector #6)
+        "GVT_CNV_BEGIN_DATE", "GVT_TEMP_PSN_EXPIR", "GVT_APPT_LIMIT_DYS",
+        "GVT_SPEP", "GVT_SUPV_PROB_DT", "GVT_APPT_EXPIR_DT",
+        "LAST_INCREASE_DT", "GVT_COMP_LVL_PERM", "GVT_DETAIL_EXPIRES",
+        "GVT_TENURE"
     ]
     emp_lkp = lookups["gvt_employment"].alias("emp")
 
@@ -237,6 +242,7 @@ def apply_lookup_joins(sq_df, lookups):
 
     # --- lkp_PS_GVT_PERS_NID ---
     # Connector #14: SQ_PS_GVT_JOB -> lkp_PS_GVT_PERS_NID (4 fields input, 1 output)
+    # Lookup Condition: EMPLID = EMPLID_IN AND EMPL_RCD = EMPL_RCD_IN AND EFFDT = EFFDT_IN AND EFFSEQ = EFFSEQ_IN
     # Returns: NATIONAL_ID (SSN)
     nid_lkp = lookups["gvt_pers_nid"].alias("nid")
     nid_select = []
@@ -245,7 +251,10 @@ def apply_lookup_joins(sq_df, lookups):
 
     df = df.join(
         F.broadcast(nid_lkp),
-        df["EMPLID"] == F.col("nid.EMPLID"),
+        (df["EMPLID"] == F.col("nid.EMPLID")) &
+        (df["EMPL_RCD"] == F.col("nid.EMPL_RCD")) &
+        (df["EFFDT"] == F.col("nid.EFFDT")) &
+        (df["EFFSEQ"] == F.col("nid.EFFSEQ")),
         "left"
     ).select(df["*"], *nid_select)
     print("  [OK] lkp_PS_GVT_PERS_NID joined")
@@ -305,6 +314,7 @@ def apply_lookup_joins(sq_df, lookups):
 
     # --- lkp_PS_GVT_CITIZENSHIP ---
     # Connector #17: SQ_PS_GVT_JOB -> lkp_PS_GVT_CITIZENSHIP (4 fields)
+    # Lookup Condition: EMPLID = EMPLID_IN AND EMPL_RCD = EMPL_RCD_IN AND EFFDT = EFFDT_IN AND EFFSEQ = EFFSEQ_IN
     # Returns: CITIZENSHIP_STATUS
     cit_lkp = lookups["gvt_citizenship"].alias("cit")
     cit_select = []
@@ -313,7 +323,10 @@ def apply_lookup_joins(sq_df, lookups):
 
     df = df.join(
         F.broadcast(cit_lkp),
-        df["EMPLID"] == F.col("cit.EMPLID"),
+        (df["EMPLID"] == F.col("cit.EMPLID")) &
+        (df["EMPL_RCD"] == F.col("cit.EMPL_RCD")) &
+        (df["EFFDT"] == F.col("cit.EFFDT")) &
+        (df["EFFSEQ"] == F.col("cit.EFFSEQ")),
         "left"
     ).select(df["*"], *cit_select)
     print("  [OK] lkp_PS_GVT_CITIZENSHIP joined")
@@ -462,10 +475,19 @@ def apply_exp_main2biis(df):
     df = df.withColumn("v_MONTH_CHAR", F.lit(MONTH_CHAR))
     df = df.withColumn("v_DAY_CHAR", F.lit(DAY_CHAR))
 
-    # v_EVENT_ID: Sequence-based EVENT_ID generation
-    # In Informatica this uses EHRP_SEQ_NUMBER + row_number as incrementing sequence
-    # Equivalent: EHRP_SEQ_NUMBER + monotonically_increasing_id or row_number
-    w = Window.orderBy("EFFDT", "EMPLID", "EMPL_RCD", "EFFSEQ")
+    # v_EVENT_ID: Stateful EVENT_ID generation
+    # Informatica logic (row-by-row, ordered by EFFDT):
+    #   v_CURRENT_YEAR = GET_DATE_PART(EFFDT, 'YYYY')
+    #   v_EVENT_ID = IIF(v_CURRENT_YEAR = v_PREVIOUS_YEAR, v_EVENT_ID + 1, EHRP_SEQ_NUMBER + 1)
+    #   v_PREVIOUS_YEAR = v_CURRENT_YEAR
+    #
+    # When the year changes within the data, the counter resets to EHRP_SEQ_NUMBER+1
+    # for that year. Within the same year, it increments by 1 for each row.
+    #
+    # PySpark equivalent: partition by year, use EHRP_SEQ_NUMBER + row_number within year.
+    # Since data is ordered by EFFDT, all rows within a year are contiguous.
+    df = df.withColumn("v_EFFDT_YEAR", F.year(F.col("EFFDT")))
+    w = Window.partitionBy("v_EFFDT_YEAR").orderBy("EFFDT", "EMPLID", "EMPL_RCD", "EFFSEQ")
     df = df.withColumn(
         "v_EVENT_ID",
         F.coalesce(F.col("EHRP_SEQ_NUMBER"), F.lit(0)).cast("long") +
@@ -999,7 +1021,8 @@ def write_nwk_action_primary(df, spark):
         F.col("ANNL_BENEF_BASE_RT").alias("ANN_SALARY_RATE_AMT"),
         F.col("GVT_ANN_IND").alias("ANNUITANT_IND_CD"),
         F.col("o_APPT_LIMIT_NTE_HRS").alias("APPT_LMT_NTE_HRS"),
-        F.col("GVT_PAR_NTE_DATE").alias("APPT_NTE_DTE"),
+        # XML Connector #6: GVT_APPT_EXPIR_DT from lkp_PS_GVT_EMPLOYMENT -> APPT_NTE_DTE
+        F.col("emp_GVT_APPT_EXPIR_DT").alias("APPT_NTE_DTE"),
         F.col("GVT_TYPE_OF_APPT").alias("APPT_TYPE_CD"),
         F.col("BARG_UNIT").alias("BARGAINING_UNIT_CD"),
         F.col("o_BASE_HOURS").alias("BASE_HRS"),
@@ -1095,17 +1118,30 @@ def write_nwk_action_primary(df, spark):
         F.col("SETID_DEPT").alias("SETID"),
         F.col("o_GVT_ANNUITY_OFFSET").alias("FEGLI_LIVING_BNFT_REMAIN_AMT"),
 
-        # From lkp_PS_GVT_EMPLOYMENT dates
+        # From lkp_PS_GVT_EMPLOYMENT dates (Connector #6)
         F.col("emp_HIRE_DT").alias("EMP_EOD_DTE"),
         F.col("emp_GVT_SCD_RETIRE").alias("RETMT_SCD_DTE"),
         F.col("emp_GVT_SCD_TSP").alias("TSP_SCD_DTE"),
-        F.col("emp_CMPNY_SENIORITY_DT").alias("CAREER_START_DTE"),
+        # XML Connector: GVT_CNV_BEGIN_DATE -> CAREER_START_DTE (not CMPNY_SENIORITY_DT)
+        F.col("emp_GVT_CNV_BEGIN_DATE").alias("CAREER_START_DTE"),
         F.col("emp_GVT_SCD_LEO").alias("LEO_SCD_DT"),
         F.col("GRADE_ENTRY_DT").alias("EMP_GRADE_START_DTE"),
         F.col("STEP_ENTRY_DT").alias("WGI_START_DTE"),
         F.col("o_BUYOUT_AMT").alias("BUYOUT_AMT"),
         F.col("o_BUYOUT_EFFDT").alias("BUYOUT_EFF_DTE"),
         F.col("o_LWOP_START_DATE").alias("LWOP_START_DTE"),
+        # Additional lkp_PS_GVT_EMPLOYMENT -> NWK_ACTION_PRIMARY_TBL fields (Connector #6)
+        F.col("emp_GVT_TEMP_PSN_EXPIR").alias("POSITION_CHANGE_END_DTE"),
+        F.col("emp_GVT_APPT_LIMIT_DYS").alias("APPT_LMT_NTE_90DAY_CD"),
+        F.col("emp_GVT_SPEP").alias("SPECIAL_PROGRAM_CD"),
+        F.col("emp_GVT_SUPV_PROB_DT").alias("SUPERVSRY_MGRL_PROB_START_DTE"),
+        F.col("emp_LAST_INCREASE_DT").alias("AWOP_WGI_START_DTE"),
+        F.col("emp_GVT_COMP_LVL_PERM").alias("COMPETITIVE_LEVEL_CD"),
+        F.col("emp_GVT_DETAIL_EXPIRES").alias("SUSPENSION_END_DTE"),
+        F.col("emp_GVT_TEMP_PRO_EXPIR").alias("TEMP_PROMTN_EXP_DTE"),
+        F.col("emp_GVT_TENURE").alias("TENURE_CD"),
+        F.col("emp_GVT_WGI_STATUS").alias("WGI_STATUS_CD"),
+        F.col("emp_SERVICE_DT").alias("LV_SCD_DTE"),
 
         # From lkp_PS_HE_FILL_POS
         F.col("fill_HE_FILL_POSITION").alias("FILLING_POSITION_CD"),
