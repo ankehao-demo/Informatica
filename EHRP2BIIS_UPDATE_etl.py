@@ -761,7 +761,7 @@ df = df.withColumn(
     "o_EMP_RESID_CITY_STATE_NAME",
     concat(
         coalesce(col("lkp_CITY"), lit("")),
-        lit(", "),
+        lit(",  "),
         coalesce(col("lkp_STATE"), lit(""))
     )
 )
