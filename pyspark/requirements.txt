@@ -1,0 +1,4 @@
+# Local test dependencies only. On Databricks, PySpark is provided by the runtime
+# and must not be installed onto the cluster - pin the DBR version instead.
+pyspark==4.2.0
+pytest==7.3.2
