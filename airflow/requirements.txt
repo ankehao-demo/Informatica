@@ -1,0 +1,8 @@
+# Install with the official constraints file, e.g.
+#   pip install -r airflow/requirements.txt --constraint https://raw.githubusercontent.com/apache/airflow/constraints-2.9.3/constraints-3.10.txt
+apache-airflow==2.9.3
+apache-airflow-providers-oracle
+apache-airflow-providers-ssh
+apache-airflow-providers-databricks
+apache-airflow-providers-slack
+pyyaml

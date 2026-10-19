@@ -1,0 +1,5 @@
+# EHRP2BIIS Databricks pilot (local tests mirror Databricks Runtime 15.4 LTS)
+pyspark==3.5.1
+delta-spark==3.2.0
+pyyaml>=6
+pytest>=8

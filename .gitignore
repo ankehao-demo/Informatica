@@ -3,3 +3,12 @@
 *.tfstate
 *.tfstate.backup
 *.tfvars
+
+# Python / Spark (EHRP2BIIS pilot)
+__pycache__/
+*.pyc
+.pytest_cache/
+reconcile_reports/
+spark-warehouse/
+metastore_db/
+derby.log

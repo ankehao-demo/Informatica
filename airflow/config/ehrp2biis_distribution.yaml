@@ -1,0 +1,19 @@
+# Distribution step: which files to hand to the UNCHANGED `Transfer Scripts/` after a
+# successful load. The scripts themselves (sftp user, host m1csv301.hhs.gov, jail
+# directories, file formats) are external contracts and are invoked verbatim on the
+# BIIS host over SSH -- this file only lists arguments.
+#
+# `file` is a Jinja template rendered by Airflow ({{ ds_nodash }}, {{ params.pay_period }} ...).
+# Leave `transfers` empty to run the load without distribution (e.g. during dual-run).
+scripts_dir: "/home/sa-biisint/Transfer Scripts"
+maintenance_dir: "/home/sa-biisint/Maintenance Scripts"
+transfers: []
+#  - agency: FDA
+#    script: fda_transfer          # -> /opt/app/jail/sa-fdausr2/outbound
+#    file: "HHS_CPM_{{ params.pay_period }}.txt"   # must exist in /data/BIISINT/data/int/out/CPM
+#  - agency: NIH
+#    script: nih_cpm_transfer
+#    file: "NIH_CPM_{{ params.pay_period }}.txt"
+archive: []
+#  - inputdir: /data/BIISINT/data/int/out/CPM
+#    destination: /data/BIISINT/data/int/archive/CPM
