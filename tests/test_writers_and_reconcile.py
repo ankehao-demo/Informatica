@@ -50,7 +50,8 @@ def test_merge_keeps_other_loads(spark, tmp_path):
 
 @pytest.fixture(scope="module")
 def outputs(spark):
-    return _run(spark)
+    # materialize once: production reads shallow table plans, not the whole transform lineage
+    return {t: df.localCheckpoint() for t, df in _run(spark).items()}
 
 
 def test_reconcile_identical_runs_match(outputs):

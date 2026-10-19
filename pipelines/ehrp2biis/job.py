@@ -182,7 +182,8 @@ def get_spark() -> SparkSession:
          .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
          .config("spark.sql.session.timeZone", "UTC").config("spark.ui.enabled", "false")
          .config("spark.ui.showConsoleProgress", "false")
-         .config("spark.sql.shuffle.partitions", "4"))
+         .config("spark.sql.shuffle.partitions", "4")
+         .config("spark.driver.memory", os.environ.get("SPARK_DRIVER_MEMORY", "4g")))
     if os.environ.get("SPARK_JARS_REPOSITORIES"):
         b = b.config("spark.jars.repositories", os.environ["SPARK_JARS_REPOSITORIES"])
     spark = configure_spark_with_delta_pip(b).getOrCreate()
